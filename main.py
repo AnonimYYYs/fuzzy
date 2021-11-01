@@ -1,8 +1,5 @@
 import math
 
-e_max = 600000.0    # максимальная энергия торможения
-l_critical = 20.0   # за сколько м до стены нужно остановиться
-
 
 def E(m, v):
     return m * v * v / 2
@@ -12,48 +9,58 @@ def V(e, m):
     return math.sqrt(2 * e / m) if e > 0 else 0.0
 
 
-def defuzzy(e):
-    return e * e_max
+# возвращает терм "высокая" скорость
+def fuzzy_velocity(v):
+    v_high = 50
+    v_low = 10
+    return 1.0 if v >= v_high else 0.0 if v <= v_low else (v - v_low) / (v_high - v_low)
 
 
-def fuzzy(e):
-    return e / e_max if e < e_max else 1.0
+# возвращает терм "близко"
+def fuzzy_length(l):
+    l_high = 100
+    l_low = 50
+    return 0.0 if l >= l_high else 1.0 if l <= l_low else (l - l_high) / (l_low - l_high)
 
 
-def fuzzy_controller(v, l, m):
-    current_e = E(m, v)
-    time = math.ceil(current_e / e_max)
-    time = time if time != 0 else 1.0
-    if v * time / 2 > l - l_critical:
-        return 1.0
-    elif v * time > l - l_critical:
-        t_stop = 2 * (l - l_critical) / v
-        return fuzzy(current_e / t_stop)
-    else:
-        return 0.0
+def fuzzy_controller(v, l):
+    fuzz_v = fuzzy_velocity(v)
+    fuzz_l = fuzzy_length(l)
+    return max(fuzz_l, fuzz_v)
+
+
+def defuzzy(fuzzy_val, max_eng):
+    return fuzzy_val * max_eng
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
 
     # variables
-    M = 1500.0        # масса машины, кг
-    v = 50.0    # начальная скорость, м/с
-    l = 500.0  # начальное расстояние, м
+    mass = 1500.0                   # масса машины, кг
+    velocity = 50.0                 # начальная скорость, м/с
+    length = 500.0                  # начальное расстояние, м
+    step = 1                        # сколько секунд длится один шаг моделирования
+    energy_stop_max = 600000.0      # максимальная энергия торможения в секунду
 
-    t = 0
+    t = 0.0
+    energy_stop_max *= step
+
     while True:
-        stop_energy = defuzzy(fuzzy_controller(v, l, M))
-        print(f'step: {t},\t v: {v},\t l: {l},\t energy: {E(M, v)},\t stop energy: {stop_energy}')
-        v1 = V(E(M, v) - stop_energy, M)
-        v1 = 0.0 if v1 < 0.0 else v1
-        l -= (v + v1) / 2
-        v = v1
-        t += 1
-        if round(v) <= 0:
-            print(f'-- machine stopped, l:{l}')
-            break
-        if round(l) <= 0:
-            print(f'crashed, v:{v}')
+        curr_energy = E(mass, velocity)
+        stop_energy = defuzzy(fuzzy_controller(velocity, length), energy_stop_max)
+        new_energy = curr_energy - stop_energy
+        new_velocity = V(new_energy, mass)
+        print(f'time: {t},\t energy: {curr_energy},\t velocity: {V(curr_energy, mass)},\t stop energy: {stop_energy},\t lenght: {length}')
+        length -= (velocity + new_velocity) * step / 2
+        velocity = new_velocity
+
+        if length <= 0:
+            print(f'car broke; v={velocity}')
             break
 
+        if velocity <= 0:
+            print(f'car stopped; l={length}')
+            break
+
+        t += step
